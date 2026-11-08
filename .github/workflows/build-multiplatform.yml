@@ -77,15 +77,13 @@ jobs:
           exec "$HERE/pulseview" "$@"
           EOF
           chmod +x "dist/$NAME/run-pulseview.sh"
-          tar -C dist -czf "$NAME.tar.gz" "$NAME"
-          echo "--- tarball contents ---"
-          tar -tzf "$NAME.tar.gz"
-          ls -l "$NAME.tar.gz"
+          echo "--- package contents ---"
+          ls -l "dist/$NAME"
 
       - uses: actions/upload-artifact@v7
         with:
           name: pulseview-linux-${{ matrix.arch }}
-          path: pulseview-linux-${{ matrix.arch }}.tar.gz
+          path: dist/pulseview-linux-${{ matrix.arch }}/
 
   macos-arm64:
     name: macOS arm64
@@ -160,15 +158,13 @@ jobs:
           otool -L pulseview | grep -E "sigrok|loader" || true
           otool -L pulseview | grep -i "qt" | head -3 || true
           cd "$GITHUB_WORKSPACE"
-          tar -C dist -czf "$NAME.tar.gz" "$NAME"
-          echo "--- tarball contents ---"
-          tar -tzf "$NAME.tar.gz"
-          ls -l "$NAME.tar.gz"
+          echo "--- package contents ---"
+          ls -l "dist/$NAME"
 
       - uses: actions/upload-artifact@v7
         with:
           name: pulseview-macos-arm64
-          path: pulseview-macos-arm64.tar.gz
+          path: dist/pulseview-macos-arm64/
 
   windows-x86_64:
     name: Windows x86_64
@@ -270,10 +266,6 @@ jobs:
           done
           echo "--- package contents ---"
           ls -l "$PKG"
-          cd "$WORKSPACE/dist"
-          zip -r -q pulseview-windows-x86_64.zip pulseview-windows-x86_64
-          unzip -l pulseview-windows-x86_64.zip | tail -5
-          ls -l pulseview-windows-x86_64.zip
 
       - name: Smoke test (version + all DLLs load)
         shell: msys2 {0}
@@ -284,7 +276,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: pulseview-windows-x86_64
-          path: dist/pulseview-windows-x86_64.zip
+          path: dist/pulseview-windows-x86_64/
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -298,9 +290,18 @@ jobs:
           path: dist
       - name: List artifacts
         run: find dist -type f | sort
+      - name: Create release archives
+        run: |
+          tar -czf pulseview-linux-x86_64.tar.gz -C dist pulseview-linux-x86_64
+          tar -czf pulseview-linux-arm64.tar.gz -C dist pulseview-linux-arm64
+          tar -czf pulseview-macos-arm64.tar.gz -C dist pulseview-macos-arm64
+          (cd dist && zip -r ../pulseview-windows-x86_64.zip pulseview-windows-x86_64)
+          ls -l pulseview-*.tar.gz pulseview-windows-x86_64.zip
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/**/*.tar.gz
-            dist/**/*.zip
+            pulseview-linux-x86_64.tar.gz
+            pulseview-linux-arm64.tar.gz
+            pulseview-macos-arm64.tar.gz
+            pulseview-windows-x86_64.zip
           generate_release_notes: true
