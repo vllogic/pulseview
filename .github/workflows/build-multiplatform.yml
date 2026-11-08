@@ -278,9 +278,245 @@ jobs:
           name: pulseview-windows-x86_64
           path: dist/
 
+  sigrok-cli-linux:
+    name: sigrok-cli Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: vllogic/libsigrok
+          ref: vllogic-dev
+          path: libsigrok
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake autoconf-archive libtool pkg-config \
+            doxygen libglib2.0-dev libglibmm-2.4-dev libsigc++-2.0-dev \
+            libusb-1.0-0-dev libzip-dev libserialport-dev
+
+      - name: Build libsigrok + cxx bindings
+        run: |
+          cd libsigrok
+          ./autogen.sh
+          ./configure --prefix="$GITHUB_WORKSPACE/sr" \
+            --enable-cxx --disable-python --disable-ruby --disable-java \
+            --disable-all-drivers --enable-vllogic-logic
+          make -j"$(nproc)"
+          make install
+          test -f "$GITHUB_WORKSPACE/sr/lib/pkgconfig/libsigrokcxx.pc" \
+            || { echo "ERROR: libsigrokcxx was not built"; exit 1; }
+
+      - name: Build sigrok-cli
+        run: |
+          git clone --depth 1 https://github.com/sigrokproject/sigrok-cli.git sigrok-cli
+          cd sigrok-cli
+          ./autogen.sh
+          PKG_CONFIG_PATH="$GITHUB_WORKSPACE/sr/lib/pkgconfig" ./configure \
+            --prefix="$GITHUB_WORKSPACE/scli" --without-libsigrokdecode
+          make -j"$(nproc)"
+          make install
+          LD_LIBRARY_PATH="$GITHUB_WORKSPACE/sr/lib" "$GITHUB_WORKSPACE/scli/bin/sigrok-cli" --version
+
+      - name: Package
+        run: |
+          NAME=sigrok-cli-linux-${{ matrix.arch }}
+          mkdir -p "dist/$NAME"
+          cp scli/bin/sigrok-cli "dist/$NAME/"
+          cp -a sr/lib/libsigrok.so* sr/lib/libsigrokcxx.so* "dist/$NAME/"
+          cat > "dist/$NAME/run-sigrok-cli.sh" <<'EOF'
+          #!/bin/sh
+          HERE=$(dirname "$0")
+          export LD_LIBRARY_PATH="$HERE:$LD_LIBRARY_PATH"
+          exec "$HERE/sigrok-cli" "$@"
+          EOF
+          chmod +x "dist/$NAME/run-sigrok-cli.sh"
+          echo "--- package contents ---"
+          ls -l "dist/$NAME"
+          LD_LIBRARY_PATH="$PWD/dist/$NAME" "dist/$NAME/sigrok-cli" --version
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sigrok-cli-linux-${{ matrix.arch }}
+          path: dist/
+
+  sigrok-cli-macos-arm64:
+    name: sigrok-cli macOS arm64
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: vllogic/libsigrok
+          ref: vllogic-dev
+          path: libsigrok
+
+      - name: Install dependencies
+        run: |
+          brew install glibmm libsigc++ libusb libzip libserialport \
+            autoconf automake libtool pkg-config doxygen
+
+      - name: Build libsigrok + cxx bindings
+        run: |
+          BP=$(brew --prefix)
+          export PKG_CONFIG_PATH="$BP/opt/libusb/lib/pkgconfig:$BP/opt/libzip/lib/pkgconfig:$BP/opt/libserialport/lib/pkgconfig:$BP/lib/pkgconfig"
+          cd libsigrok
+          ./autogen.sh
+          ./configure --prefix="$GITHUB_WORKSPACE/sr" \
+            --enable-cxx --disable-python --disable-ruby --disable-java \
+            --disable-all-drivers --enable-vllogic-logic
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+          test -f "$GITHUB_WORKSPACE/sr/lib/pkgconfig/libsigrokcxx.pc" \
+            || { echo "ERROR: libsigrokcxx was not built"; exit 1; }
+
+      - name: Build sigrok-cli
+        run: |
+          BP=$(brew --prefix)
+          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/sr/lib/pkgconfig:$BP/lib/pkgconfig"
+          git clone --depth 1 https://github.com/sigrokproject/sigrok-cli.git sigrok-cli
+          cd sigrok-cli
+          ./autogen.sh
+          ./configure --prefix="$GITHUB_WORKSPACE/scli" --without-libsigrokdecode
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+          DYLD_LIBRARY_PATH="$GITHUB_WORKSPACE/sr/lib" "$GITHUB_WORKSPACE/scli/bin/sigrok-cli" --version
+
+      - name: Package
+        run: |
+          NAME=sigrok-cli-macos-arm64
+          mkdir -p "dist/$NAME"
+          cp scli/bin/sigrok-cli "dist/$NAME/"
+          cp -a sr/lib/libsigrok.4.dylib sr/lib/libsigrokcxx.4.dylib "dist/$NAME/"
+          cd "dist/$NAME"
+          install_name_tool -id @rpath/libsigrok.4.dylib libsigrok.4.dylib
+          install_name_tool -id @rpath/libsigrokcxx.4.dylib libsigrokcxx.4.dylib
+          SRDEP=$(otool -L libsigrokcxx.4.dylib | awk '/libsigrok\.4\.dylib/{print $1;exit}')
+          [ -n "$SRDEP" ] && install_name_tool -change "$SRDEP" @loader_path/libsigrok.4.dylib libsigrokcxx.4.dylib
+          D=$(otool -L sigrok-cli | awk '/libsigrokcxx\.4\.dylib/{print $1;exit}')
+          [ -n "$D" ] && install_name_tool -change "$D" @loader_path/libsigrokcxx.4.dylib sigrok-cli
+          D=$(otool -L sigrok-cli | awk '/libsigrok\.4\.dylib/{print $1;exit}')
+          [ -n "$D" ] && install_name_tool -change "$D" @loader_path/libsigrok.4.dylib sigrok-cli
+          codesign --force --sign - sigrok-cli libsigrok.4.dylib libsigrokcxx.4.dylib
+          cat > run-sigrok-cli.sh <<'EOF'
+          #!/bin/sh
+          HERE=$(dirname "$0")
+          export DYLD_LIBRARY_PATH="$HERE:$DYLD_LIBRARY_PATH"
+          exec "$HERE/sigrok-cli" "$@"
+          EOF
+          chmod +x run-sigrok-cli.sh
+          otool -L sigrok-cli | grep -E "sigrok|loader" || true
+          ./sigrok-cli --version
+          cd "$GITHUB_WORKSPACE"
+          echo "--- package contents ---"
+          ls -l "dist/$NAME"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sigrok-cli-macos-arm64
+          path: dist/
+
+  sigrok-cli-windows-x86_64:
+    name: sigrok-cli Windows x86_64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: vllogic/libsigrok
+          ref: vllogic-dev
+          path: libsigrok
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-glibmm
+            mingw-w64-ucrt-x86_64-libsigc++
+            mingw-w64-ucrt-x86_64-libusb
+            mingw-w64-ucrt-x86_64-libzip
+            mingw-w64-ucrt-x86_64-libserialport
+            mingw-w64-ucrt-x86_64-doxygen
+            autoconf
+            automake
+            libtool
+            make
+            git
+
+      - name: Build libsigrok + cxx bindings
+        shell: msys2 {0}
+        run: |
+          WORKSPACE=$(cygpath -u "$GITHUB_WORKSPACE")
+          cd "$WORKSPACE/libsigrok"
+          ./autogen.sh
+          ./configure --prefix="$WORKSPACE/sr" \
+            --enable-cxx --disable-python --disable-ruby --disable-java \
+            --disable-all-drivers --enable-vllogic-logic
+          make -j"$(nproc)"
+          make install
+          test -f "$WORKSPACE/sr/lib/pkgconfig/libsigrokcxx.pc" \
+            || { echo "ERROR: libsigrokcxx was not built"; exit 1; }
+
+      - name: Build sigrok-cli
+        shell: msys2 {0}
+        run: |
+          WORKSPACE=$(cygpath -u "$GITHUB_WORKSPACE")
+          git clone --depth 1 https://github.com/sigrokproject/sigrok-cli.git sigrok-cli
+          cd sigrok-cli
+          ./autogen.sh
+          PKG_CONFIG_PATH="$WORKSPACE/sr/lib/pkgconfig" ./configure \
+            --prefix="$WORKSPACE/scli" --without-libsigrokdecode
+          make -j"$(nproc)"
+          make install
+
+      - name: Package
+        shell: msys2 {0}
+        run: |
+          WORKSPACE=$(cygpath -u "$GITHUB_WORKSPACE")
+          PKG="$WORKSPACE/dist/sigrok-cli-windows-x86_64"
+          mkdir -p "$PKG"
+          cp "$WORKSPACE/scli/bin/sigrok-cli.exe" "$PKG/"
+          cp "$WORKSPACE"/sr/bin/libsigrok*.dll "$PKG/"
+          cp "$WORKSPACE"/sr/bin/libsigrokcxx*.dll "$PKG/"
+          cd "$PKG"
+          for i in 1 2 3 4 5 6; do
+            ldd ./*.exe ./*.dll 2>/dev/null \
+              | awk -F'=> ' '/=> \/ucrt64\//{print $2}' | awk '{print $1}' \
+              | sort -u > /tmp/deps.txt
+            added=0
+            while read -r dll; do
+              base=$(basename "$dll")
+              if [ ! -f "$base" ]; then cp "$dll" .; added=1; fi
+            done < /tmp/deps.txt
+            [ "$added" -eq 0 ] && break
+          done
+          cat > run-sigrok-cli.bat <<'EOF'
+          @echo off
+          set PATH=%~dp0;%PATH%
+          "%~dp0sigrok-cli.exe" %*
+          EOF
+          echo "--- package contents ---"
+          ls -l "$PKG"
+          ./sigrok-cli.exe --version
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sigrok-cli-windows-x86_64
+          path: dist/
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux, macos-arm64, windows-x86_64]
+    needs: [linux, macos-arm64, windows-x86_64,
+      sigrok-cli-linux, sigrok-cli-macos-arm64, sigrok-cli-windows-x86_64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -297,7 +533,11 @@ jobs:
           tar -czf pulseview-linux-arm64.tar.gz -C dist pulseview-linux-arm64
           tar -czf pulseview-macos-arm64.tar.gz -C dist pulseview-macos-arm64
           (cd dist && zip -r ../pulseview-windows-x86_64.zip pulseview-windows-x86_64)
-          ls -l pulseview-*.tar.gz pulseview-windows-x86_64.zip
+          tar -czf sigrok-cli-linux-x86_64.tar.gz -C dist sigrok-cli-linux-x86_64
+          tar -czf sigrok-cli-linux-arm64.tar.gz -C dist sigrok-cli-linux-arm64
+          tar -czf sigrok-cli-macos-arm64.tar.gz -C dist sigrok-cli-macos-arm64
+          (cd dist && zip -r ../sigrok-cli-windows-x86_64.zip sigrok-cli-windows-x86_64)
+          ls -l *.tar.gz *.zip
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -305,4 +545,8 @@ jobs:
             pulseview-linux-arm64.tar.gz
             pulseview-macos-arm64.tar.gz
             pulseview-windows-x86_64.zip
+            sigrok-cli-linux-x86_64.tar.gz
+            sigrok-cli-linux-arm64.tar.gz
+            sigrok-cli-macos-arm64.tar.gz
+            sigrok-cli-windows-x86_64.zip
           generate_release_notes: true
