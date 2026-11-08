@@ -4,6 +4,7 @@ on:
   push:                # When the repo itself has a new commit on the master branch
     branches:
       - master
+      - vllogic-dev
     tags:              # When a new tag was created
   workflow_dispatch:   # When the workflow was started manually from github
   pull_request:
