@@ -12,6 +12,24 @@ on:
       - synchronize    # When a pull request's branch was updated with a new commit
 
 jobs:
-  call-build-workflow:
+  build:
     name: Sigrok artifact builder
-    uses: sigrokproject/sigrok-build/.github/workflows/build.yml@master
+    uses: vllogic/sigrok-build/.github/workflows/build.yml@vllogic-dev
+
+  release:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: List artifacts
+        run: find dist -type f | sort
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
