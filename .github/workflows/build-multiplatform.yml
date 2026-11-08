@@ -19,13 +19,13 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vllogic/libsigrok
           ref: vllogic-dev
           path: libsigrok
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vllogic/pulseview
           ref: ${{ github.ref_name }}
@@ -82,7 +82,7 @@ jobs:
           tar -tzf "$NAME.tar.gz"
           ls -l "$NAME.tar.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pulseview-linux-${{ matrix.arch }}
           path: pulseview-linux-${{ matrix.arch }}.tar.gz
@@ -91,13 +91,13 @@ jobs:
     name: macOS arm64
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vllogic/libsigrok
           ref: vllogic-dev
           path: libsigrok
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vllogic/pulseview
           ref: ${{ github.ref_name }}
@@ -164,7 +164,7 @@ jobs:
           tar -tzf "$NAME.tar.gz"
           ls -l "$NAME.tar.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pulseview-macos-arm64
           path: pulseview-macos-arm64.tar.gz
@@ -173,13 +173,13 @@ jobs:
     name: Windows x86_64
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vllogic/libsigrok
           ref: vllogic-dev
           path: libsigrok
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: vllogic/pulseview
           ref: ${{ github.ref_name }}
@@ -187,22 +187,22 @@ jobs:
 
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: false
           install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-qt5-base
-            mingw-w64-x86_64-qt5-svg
-            mingw-w64-x86_64-qt5-tools
-            mingw-w64-x86_64-glibmm
-            mingw-w64-x86_64-libsigc++
-            mingw-w64-x86_64-libusb
-            mingw-w64-x86_64-libzip
-            mingw-w64-x86_64-boost
-            mingw-w64-x86_64-libserialport
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt5-base
+            mingw-w64-ucrt-x86_64-qt5-svg
+            mingw-w64-ucrt-x86_64-qt5-tools
+            mingw-w64-ucrt-x86_64-glibmm
+            mingw-w64-ucrt-x86_64-libsigc++
+            mingw-w64-ucrt-x86_64-libusb
+            mingw-w64-ucrt-x86_64-libzip
+            mingw-w64-ucrt-x86_64-boost
+            mingw-w64-ucrt-x86_64-libserialport
             doxygen
             autoconf
             automake
@@ -238,7 +238,7 @@ jobs:
           export PKG_CONFIG_PATH="$WORKSPACE/sr/lib/pkgconfig:$PKG_CONFIG_PATH"
           cd "$WORKSPACE/pulseview"
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$(cygpath -w /mingw64);$(cygpath -w "$WORKSPACE/sr")" \
+            -DCMAKE_PREFIX_PATH="$(cygpath -w /ucrt64);$(cygpath -w "$WORKSPACE/sr")" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DENABLE_DECODE=OFF
           cmake --build build
@@ -253,11 +253,12 @@ jobs:
           cp "$WORKSPACE"/sr/bin/libsigrok*.dll "$PKG/"
           cp "$WORKSPACE"/sr/bin/libsigrokcxx*.dll "$PKG/"
           cd "$PKG"
-          ls /mingw64/bin/windeployqt* 2>/dev/null || true
-          windeployqt-qt5 --release --no-translations --no-opengl-sw --no-angle pulseview.exe
+          WDEPLOY=$(ls /ucrt64/bin/windeployqt* 2>/dev/null | head -1)
+          echo "windeployqt: $WDEPLOY"
+          "$WDEPLOY" --release --no-translations --no-opengl-sw --no-angle pulseview.exe
           for i in 1 2 3 4 5 6; do
             ldd ./*.exe ./*.dll 2>/dev/null \
-              | awk -F'=> ' '/=> \/mingw64\//{print $2}' | awk '{print $1}' \
+              | awk -F'=> ' '/=> \/ucrt64\//{print $2}' | awk '{print $1}' \
               | sort -u > /tmp/deps.txt
             added=0
             while read -r dll; do
@@ -273,7 +274,13 @@ jobs:
           unzip -l pulseview-windows-x86_64.zip | tail -5
           ls -l pulseview-windows-x86_64.zip
 
-      - uses: actions/upload-artifact@v4
+      - name: Smoke test (version + all DLLs load)
+        shell: msys2 {0}
+        run: |
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/dist/pulseview-windows-x86_64"
+          ./pulseview.exe -V
+
+      - uses: actions/upload-artifact@v7
         with:
           name: pulseview-windows-x86_64
           path: dist/pulseview-windows-x86_64.zip
@@ -285,7 +292,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
       - name: List artifacts
