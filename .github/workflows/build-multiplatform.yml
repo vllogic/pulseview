@@ -203,34 +203,23 @@ jobs:
             mingw-w64-x86_64-libzip
             mingw-w64-x86_64-boost
             mingw-w64-x86_64-libserialport
-            mingw-w64-x86_64-doxygen
+            doxygen
             autoconf
             automake
             libtool
             make
             zip
 
-      - name: Prepare doxygen path conversion (MSYS2)
+      - name: Check doxygen
         shell: msys2 {0}
         run: |
-          mkdir -p "$HOME/bin"
-          cat > "$HOME/bin/doxygen" <<'WRAP'
-          #!/bin/sh
-          # The native doxygen.exe cannot read MSYS2 POSIX paths handed over
-          # through SRCDIR/BUILDDIR by libsigrok's Makefile.
-          [ -n "$SRCDIR" ] && SRCDIR=$(cygpath -m "$SRCDIR")
-          [ -n "$BUILDDIR" ] && BUILDDIR=$(cygpath -m "$BUILDDIR")
-          export SRCDIR BUILDDIR
-          exec /mingw64/bin/doxygen.exe "$@"
-          WRAP
-          chmod +x "$HOME/bin/doxygen"
-          echo "wrapper: $HOME/bin/doxygen"
+          which doxygen
+          doxygen --version
 
       - name: Build libsigrok + cxx bindings
         shell: msys2 {0}
         run: |
           WORKSPACE=$(cygpath -u "$GITHUB_WORKSPACE")
-          export PATH="$HOME/bin:$PATH"
           cd "$WORKSPACE/libsigrok"
           ./autogen.sh
           ./configure --prefix="$WORKSPACE/sr" \
