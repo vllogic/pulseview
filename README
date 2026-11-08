@@ -117,3 +117,11 @@ Website
 
  http://sigrok.org/wiki/PulseView
 
+
+
+Builds and releases
+-------------------
+
+This fork is built by GitHub Actions on Linux (x86_64/ARM64), Windows
+(x86_64) and macOS (ARM64).  See CI.md for the workflow matrix, artifact
+layout and release/tag rules.
