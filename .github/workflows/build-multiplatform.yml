@@ -527,6 +527,12 @@ jobs:
           merge-multiple: true
       - name: List artifacts
         run: find dist -type f | sort
+      - name: Restore executable bits (upload-artifact drops them)
+        run: |
+          for d in dist/*/; do
+            chmod +x "$d"pulseview "$d"sigrok-cli \
+              "$d"run-pulseview.sh "$d"run-sigrok-cli.sh 2>/dev/null || true
+          done
       - name: Create release archives
         run: |
           tar -czf pulseview-linux-x86_64.tar.gz -C dist pulseview-linux-x86_64
