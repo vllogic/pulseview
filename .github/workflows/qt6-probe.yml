@@ -1,0 +1,100 @@
+name: Qt6 probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  linux-qt6:
+    name: Linux Qt6 trial build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: vllogic/libsigrok
+          ref: vllogic-dev
+          path: libsigrok
+
+      - uses: actions/checkout@v7
+        with:
+          repository: vllogic/pulseview
+          ref: ${{ github.ref_name }}
+          path: pulseview
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake autoconf-archive libtool pkg-config \
+            cmake doxygen \
+            qt6-base-dev qt6-tools-dev qt6-tools-dev-tools libqt6svg6-dev \
+            libglib2.0-dev libglibmm-2.4-dev libsigc++-2.0-dev \
+            libusb-1.0-0-dev libzip-dev libserialport-dev \
+            libboost-filesystem-dev libboost-serialization-dev
+
+      - name: Build libsigrok + cxx bindings
+        run: |
+          cd libsigrok
+          ./autogen.sh
+          ./configure --prefix="$GITHUB_WORKSPACE/sr" \
+            --enable-cxx --disable-python --disable-ruby --disable-java \
+            --disable-all-drivers --enable-vllogic-logic
+          make -j"$(nproc)"
+          make install
+
+      - name: Build PulseView against Qt6
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/sr/lib/pkgconfig
+        run: |
+          cd pulseview
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/sr" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DENABLE_DECODE=OFF \
+            -DQT_DEFAULT_MAJOR_VERSION=6
+          cmake --build build -j"$(nproc)"
+          ./build/pulseview -V
+
+  macos-qt6:
+    name: macOS Qt6 trial build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: vllogic/libsigrok
+          ref: vllogic-dev
+          path: libsigrok
+
+      - uses: actions/checkout@v7
+        with:
+          repository: vllogic/pulseview
+          ref: ${{ github.ref_name }}
+          path: pulseview
+
+      - name: Install dependencies
+        run: |
+          brew install qt glibmm libsigc++ libusb libzip boost libserialport \
+            autoconf automake libtool pkg-config cmake doxygen
+
+      - name: Build libsigrok + cxx bindings
+        run: |
+          BP=$(brew --prefix)
+          export PKG_CONFIG_PATH="$BP/opt/libusb/lib/pkgconfig:$BP/opt/libzip/lib/pkgconfig:$BP/opt/libserialport/lib/pkgconfig:$BP/lib/pkgconfig"
+          cd libsigrok
+          ./autogen.sh
+          ./configure --prefix="$GITHUB_WORKSPACE/sr" \
+            --enable-cxx --disable-python --disable-ruby --disable-java \
+            --disable-all-drivers --enable-vllogic-logic
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+
+      - name: Build PulseView against Qt6
+        run: |
+          BP=$(brew --prefix)
+          export PKG_CONFIG_PATH="$GITHUB_WORKSPACE/sr/lib/pkgconfig:$BP/lib/pkgconfig"
+          cd pulseview
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$BP/opt/qt;$BP;$GITHUB_WORKSPACE/sr" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DENABLE_DECODE=OFF \
+            -DQT_DEFAULT_MAJOR_VERSION=6
+          cmake --build build -j"$(sysctl -n hw.ncpu)"
+          ./build/pulseview -V
