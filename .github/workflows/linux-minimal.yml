@@ -1,9 +1,6 @@
 name: Linux x86_64 minimal
 
 on:
-  push:
-    branches: [master, vllogic-dev]
-    tags: ['v*']
   workflow_dispatch:
 
 jobs:
