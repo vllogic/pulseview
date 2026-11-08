@@ -25,7 +25,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential autoconf automake autoconf-archive libtool pkg-config \
             cmake doxygen \
-            qt6-base-dev qt6-tools-dev qt6-tools-dev-tools libqt6svg6-dev \
+            qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+            libqt6svg6-dev libgl1-mesa-dev libglu1-mesa-dev libopengl-dev \
             libglib2.0-dev libglibmm-2.4-dev libsigc++-2.0-dev \
             libusb-1.0-0-dev libzip-dev libserialport-dev \
             libboost-filesystem-dev libboost-serialization-dev
