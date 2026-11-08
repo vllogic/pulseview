@@ -52,7 +52,7 @@ jobs:
             -DENABLE_DECODE=OFF \
             -DQT_DEFAULT_MAJOR_VERSION=6
           cmake --build build -j"$(nproc)"
-          ./build/pulseview -V
+          QT_QPA_PLATFORM=offscreen ./build/pulseview -V
 
   macos-qt6:
     name: macOS Qt6 trial build
@@ -98,4 +98,4 @@ jobs:
             -DENABLE_DECODE=OFF \
             -DQT_DEFAULT_MAJOR_VERSION=6
           cmake --build build -j"$(sysctl -n hw.ncpu)"
-          ./build/pulseview -V
+          QT_QPA_PLATFORM=offscreen ./build/pulseview -V
