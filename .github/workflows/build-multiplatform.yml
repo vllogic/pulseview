@@ -254,7 +254,7 @@ jobs:
           cp "$WORKSPACE"/sr/bin/libsigrokcxx*.dll "$PKG/"
           cd "$PKG"
           ls /mingw64/bin/windeployqt* 2>/dev/null || true
-          windeployqt-qt5 --release --no-translations --no-opengl-sw pulseview.exe
+          windeployqt-qt5 --release --no-translations --no-opengl-sw --no-angle pulseview.exe
           for i in 1 2 3 4 5 6; do
             ldd ./*.exe ./*.dll 2>/dev/null \
               | awk -F'=> ' '/=> \/mingw64\//{print $2}' | awk '{print $1}' \
