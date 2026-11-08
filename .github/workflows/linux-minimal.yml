@@ -26,7 +26,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential autoconf automake autoconf-archive libtool pkg-config \
-            cmake qtbase5-dev qttools5-dev qtbase5-dev-tools libqt5svg5-dev \
+            cmake doxygen qtbase5-dev qttools5-dev qtbase5-dev-tools libqt5svg5-dev \
             libglib2.0-dev libglibmm-2.4-dev libsigc++-2.0-dev \
             libusb-1.0-0-dev libzip-dev libserialport-dev \
             libboost-filesystem-dev libboost-serialization-dev
@@ -40,6 +40,8 @@ jobs:
             --disable-all-drivers --enable-vllogic-logic
           make -j"$(nproc)"
           make install
+          test -f "$GITHUB_WORKSPACE/sr/lib/pkgconfig/libsigrokcxx.pc" \
+            || { echo "ERROR: libsigrokcxx was not built (check configure summary)"; exit 1; }
 
       - name: Build PulseView
         env:
