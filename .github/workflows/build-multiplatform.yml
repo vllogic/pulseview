@@ -115,12 +115,7 @@ jobs:
           export PKG_CONFIG_PATH="$BP/opt/qt@5/lib/pkgconfig:$BP/opt/libusb/lib/pkgconfig:$BP/opt/libzip/lib/pkgconfig:$BP/opt/libserialport/lib/pkgconfig:$BP/lib/pkgconfig"
           cd libsigrok
           ./autogen.sh
-          cat > "$GITHUB_WORKSPACE/macos-sem-shim.h" <<'HDR'
-          #include <semaphore.h>
-          #include <time.h>
-          int sem_timedwait(sem_t *sem, const struct timespec *abs_timeout);
-          HDR
-          CFLAGS="-include $GITHUB_WORKSPACE/macos-sem-shim.h" ./configure --prefix="$GITHUB_WORKSPACE/sr" \
+          ./configure --prefix="$GITHUB_WORKSPACE/sr" \
             --enable-cxx --disable-python --disable-ruby --disable-java \
             --disable-all-drivers --enable-vllogic-logic
           make -j"$(sysctl -n hw.ncpu)"
@@ -174,9 +169,111 @@ jobs:
           name: pulseview-macos-arm64
           path: pulseview-macos-arm64.tar.gz
 
+  windows-x86_64:
+    name: Windows x86_64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: vllogic/libsigrok
+          ref: vllogic-dev
+          path: libsigrok
+
+      - uses: actions/checkout@v4
+        with:
+          repository: vllogic/pulseview
+          ref: ${{ github.ref_name }}
+          path: pulseview
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-qt5-base
+            mingw-w64-x86_64-qt5-svg
+            mingw-w64-x86_64-qt5-tools
+            mingw-w64-x86_64-glibmm
+            mingw-w64-x86_64-libsigc++
+            mingw-w64-x86_64-libusb
+            mingw-w64-x86_64-libzip
+            mingw-w64-x86_64-boost
+            mingw-w64-x86_64-libserialport
+            mingw-w64-x86_64-doxygen
+            autoconf
+            automake
+            libtool
+            make
+            zip
+
+      - name: Build libsigrok + cxx bindings
+        shell: msys2 {0}
+        run: |
+          WORKSPACE=$(cygpath -u "$GITHUB_WORKSPACE")
+          cd "$WORKSPACE/libsigrok"
+          ./autogen.sh
+          ./configure --prefix="$WORKSPACE/sr" \
+            --enable-cxx --disable-python --disable-ruby --disable-java \
+            --disable-all-drivers --enable-vllogic-logic
+          make -j"$(nproc)"
+          make install
+          test -f "$WORKSPACE/sr/lib/pkgconfig/libsigrokcxx.pc" \
+            || { echo "ERROR: libsigrokcxx was not built (check configure summary)"; exit 1; }
+          ls -l "$WORKSPACE/sr/bin" | head -20
+
+      - name: Build PulseView
+        shell: msys2 {0}
+        run: |
+          WORKSPACE=$(cygpath -u "$GITHUB_WORKSPACE")
+          export PKG_CONFIG_PATH="$WORKSPACE/sr/lib/pkgconfig:$PKG_CONFIG_PATH"
+          cd "$WORKSPACE/pulseview"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(cygpath -w /mingw64);$(cygpath -w "$WORKSPACE/sr")" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DENABLE_DECODE=OFF
+          cmake --build build
+
+      - name: Package
+        shell: msys2 {0}
+        run: |
+          WORKSPACE=$(cygpath -u "$GITHUB_WORKSPACE")
+          PKG="$WORKSPACE/dist/pulseview-windows-x86_64"
+          mkdir -p "$PKG"
+          cp "$WORKSPACE/pulseview/build/pulseview.exe" "$PKG/"
+          cp "$WORKSPACE"/sr/bin/libsigrok*.dll "$PKG/"
+          cp "$WORKSPACE"/sr/bin/libsigrokcxx*.dll "$PKG/"
+          cd "$PKG"
+          windeployqt --release --no-translations --no-opengl-sw pulseview.exe
+          for i in 1 2 3 4 5 6; do
+            ldd ./*.exe ./*.dll 2>/dev/null \
+              | awk -F'=> ' '/=> \/mingw64\//{print $2}' | awk '{print $1}' \
+              | sort -u > /tmp/deps.txt
+            added=0
+            while read -r dll; do
+              base=$(basename "$dll")
+              if [ ! -f "$base" ]; then cp "$dll" .; added=1; fi
+            done < /tmp/deps.txt
+            [ "$added" -eq 0 ] && break
+          done
+          echo "--- package contents ---"
+          ls -l "$PKG"
+          cd "$WORKSPACE/dist"
+          zip -r -q pulseview-windows-x86_64.zip pulseview-windows-x86_64
+          unzip -l pulseview-windows-x86_64.zip | tail -5
+          ls -l pulseview-windows-x86_64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulseview-windows-x86_64
+          path: dist/pulseview-windows-x86_64.zip
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux, macos-arm64]
+    needs: [linux, macos-arm64, windows-x86_64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
