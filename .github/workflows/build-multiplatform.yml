@@ -115,7 +115,7 @@ jobs:
           export PKG_CONFIG_PATH="$BP/opt/qt@5/lib/pkgconfig:$BP/opt/libusb/lib/pkgconfig:$BP/opt/libzip/lib/pkgconfig:$BP/opt/libserialport/lib/pkgconfig:$BP/lib/pkgconfig"
           cd libsigrok
           ./autogen.sh
-          ./configure --prefix="$GITHUB_WORKSPACE/sr" \
+          CPPFLAGS="-D_DARWIN_C_SOURCE" ./configure --prefix="$GITHUB_WORKSPACE/sr" \
             --enable-cxx --disable-python --disable-ruby --disable-java \
             --disable-all-drivers --enable-vllogic-logic
           make -j"$(sysctl -n hw.ncpu)"
